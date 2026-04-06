@@ -1,42 +1,46 @@
+import { supabase } from "@/lib/supabase";
+
 export interface Project {
+  id: string;
   naam: string;
   snelstartClientKey: string;
 }
 
-/**
- * Leest projecten uit environment variables in dit formaat:
- *   PROJECT_1_API_KEY=...
- *   PROJECT_1_CLIENT_KEY=...
- *   PROJECT_1_NAAM=Kaasboer BV        (optioneel)
- *
- *   PROJECT_2_API_KEY=...
- *   PROJECT_2_CLIENT_KEY=...
- *   PROJECT_2_NAAM=Autobedrijf Jansen  (optioneel)
- */
-function laadProjecten(): Map<string, Project> {
-  const projecten = new Map<string, Project>();
-  let i = 1;
+// In-memory cache — wordt ververst elke 5 minuten
+let cache: Map<string, Project> | null = null;
+let cacheExpiresAt = 0;
 
-  while (true) {
-    const apiKey = process.env[`PROJECT_${i}_API_KEY`];
-    const clientKey = process.env[`PROJECT_${i}_CLIENT_KEY`];
-
-    if (!apiKey || !clientKey) break;
-
-    projecten.set(apiKey, {
-      naam: process.env[`PROJECT_${i}_NAAM`] ?? `Project ${i}`,
-      snelstartClientKey: clientKey,
-    });
-
-    i++;
+async function laadProjecten(): Promise<Map<string, Project>> {
+  if (cache && Date.now() < cacheExpiresAt) {
+    return cache;
   }
 
-  return projecten;
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, naam, api_key, snelstart_client_key")
+    .eq("actief", true);
+
+  if (error) {
+    throw new Error(`Projecten ophalen mislukt: ${error.message}`);
+  }
+
+  const map = new Map<string, Project>();
+  for (const row of data ?? []) {
+    map.set(row.api_key, {
+      id: row.id,
+      naam: row.naam,
+      snelstartClientKey: row.snelstart_client_key,
+    });
+  }
+
+  cache = map;
+  cacheExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minuten
+  return map;
 }
 
-// Eenmalig inladen bij opstarten van de serverless functie
-const projecten = laadProjecten();
-
-export function zoekProjectOpApiKey(apiKey: string): Project | null {
+export async function zoekProjectOpApiKey(
+  apiKey: string
+): Promise<Project | null> {
+  const projecten = await laadProjecten();
   return projecten.get(apiKey) ?? null;
 }
