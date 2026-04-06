@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__7c7ad8b2-2cbf-4bfb-80af-23295364f4ea__deploy_to_vercel",
+      "Bash(vercel deploy:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
