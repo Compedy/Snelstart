@@ -39,15 +39,15 @@ export interface VerkoopfactuurPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Token cache (in-memory per serverless instance)
+// Token cache — per client key
 // ---------------------------------------------------------------------------
 
-let cachedToken: string | null = null;
-let tokenExpiresAt: number = 0;
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 async function getAccessToken(clientKey: string): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiresAt - 60_000) {
-    return cachedToken;
+  const cached = tokenCache.get(clientKey);
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached.token;
   }
 
   const res = await fetch(TOKEN_URL, {
@@ -62,9 +62,11 @@ async function getAccessToken(clientKey: string): Promise<string> {
   }
 
   const data = await res.json();
-  cachedToken = data.access_token as string;
-  tokenExpiresAt = Date.now() + (data.expires_in as number) * 1000;
-  return cachedToken;
+  tokenCache.set(clientKey, {
+    token: data.access_token as string,
+    expiresAt: Date.now() + (data.expires_in as number) * 1000,
+  });
+  return data.access_token as string;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,17 +74,14 @@ async function getAccessToken(clientKey: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 async function request<T>(
+  clientKey: string,
   method: string,
   path: string,
   body?: unknown
 ): Promise<T> {
-  const clientKey = process.env.SNELSTART_CLIENT_KEY;
   const subscriptionKey = process.env.SNELSTART_SUBSCRIPTION_KEY;
-
-  if (!clientKey || !subscriptionKey) {
-    throw new Error(
-      "SNELSTART_CLIENT_KEY en SNELSTART_SUBSCRIPTION_KEY zijn vereist"
-    );
+  if (!subscriptionKey) {
+    throw new Error("SNELSTART_SUBSCRIPTION_KEY is vereist");
   }
 
   const token = await getAccessToken(clientKey);
@@ -102,7 +101,6 @@ async function request<T>(
     throw new Error(`Snelstart API fout ${res.status} op ${path}: ${text}`);
   }
 
-  // 204 No Content
   if (res.status === 204) return undefined as T;
 
   return res.json() as Promise<T>;
@@ -113,21 +111,26 @@ async function request<T>(
 // ---------------------------------------------------------------------------
 
 export async function maakVerkoopfactuur(
+  clientKey: string,
   payload: VerkoopfactuurPayload
 ): Promise<unknown> {
-  return request("POST", "/verkoopfacturen", payload);
+  return request(clientKey, "POST", "/verkoopfacturen", payload);
 }
 
-export async function getVerkoopfactuur(id: string): Promise<unknown> {
-  return request("GET", `/verkoopfacturen/${id}`);
+export async function getVerkoopfactuur(
+  clientKey: string,
+  id: string
+): Promise<unknown> {
+  return request(clientKey, "GET", `/verkoopfacturen/${id}`);
 }
 
 export async function lijstVerkoopfacturen(
+  clientKey: string,
   skip = 0,
   top = 50,
   filter?: string
 ): Promise<unknown> {
   const params = new URLSearchParams({ $skip: String(skip), $top: String(top) });
   if (filter) params.set("$filter", filter);
-  return request("GET", `/verkoopfacturen?${params}`);
+  return request(clientKey, "GET", `/verkoopfacturen?${params}`);
 }
