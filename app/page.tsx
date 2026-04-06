@@ -1,3 +1,3 @@
 export default function Home() {
-  return <div>Snelstart webhook service</div>;
+  return <div>Compedy Connect Snelstart</div>;
 }
