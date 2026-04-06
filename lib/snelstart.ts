@@ -134,3 +134,29 @@ export async function lijstVerkoopfacturen(
   if (filter) params.set("$filter", filter);
   return request(clientKey, "GET", `/verkoopfacturen?${params}`);
 }
+
+// ---------------------------------------------------------------------------
+// Relaties
+// ---------------------------------------------------------------------------
+
+export async function lijstRelaties(
+  clientKey: string,
+  skip = 0,
+  top = 100
+): Promise<unknown> {
+  const params = new URLSearchParams({ $skip: String(skip), $top: String(top) });
+  return request(clientKey, "GET", `/relaties?${params}`);
+}
+
+// ---------------------------------------------------------------------------
+// Grootboekrekeningen
+// ---------------------------------------------------------------------------
+
+export async function lijstGrootboekrekeningen(
+  clientKey: string,
+  skip = 0,
+  top = 100
+): Promise<unknown> {
+  const params = new URLSearchParams({ $skip: String(skip), $top: String(top) });
+  return request(clientKey, "GET", `/grootboekrekeningen?${params}`);
+}

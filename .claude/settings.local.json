@@ -3,7 +3,10 @@
     "allow": [
       "mcp__7c7ad8b2-2cbf-4bfb-80af-23295364f4ea__deploy_to_vercel",
       "Bash(vercel deploy:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(unzip -o \"C:/Users/jacco/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/fe777a86-e4ce-4018-890f-3ba0b6c16581/98dcac19-288c-42c3-844d-cd475d7c56c2/skills/skill-creator/compedy-connect-snelstart.skill\")",
+      "Bash(mv \"C:/Users/jacco/.claude/skills/compedy-connect-snelstart/compedy-connect-snelstart/SKILL.md\" \"C:/Users/jacco/.claude/skills/compedy-connect-snelstart/SKILL.md\")",
+      "Bash(rmdir \"C:/Users/jacco/.claude/skills/compedy-connect-snelstart/compedy-connect-snelstart\")"
     ]
   }
 }

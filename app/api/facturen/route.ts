@@ -103,6 +103,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error }, { status: 400 });
   }
 
+  // --- Idempotency check ---
+  const { data: bestaand } = await supabase
+    .from("factuur_logs")
+    .select("id, response_body")
+    .eq("project_id", project.id)
+    .eq("factuurnummer", body.factuurnummer)
+    .eq("response_status", 201)
+    .maybeSingle();
+
+  if (bestaand) {
+    return NextResponse.json(bestaand.response_body, {
+      status: 200,
+      headers: { "X-Idempotent-Replay": "true" },
+    });
+  }
+
   // --- Factuur aanmaken ---
   try {
     const factuur = await maakVerkoopfactuur(project.snelstartClientKey, body);
