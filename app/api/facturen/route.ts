@@ -1,9 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { maakVerkoopfactuur, VerkoopfactuurPayload } from "@/lib/snelstart";
 import { zoekProjectOpApiKey } from "@/lib/projects";
+import { checkRateLimit } from "@/lib/ratelimit";
 import { supabase } from "@/lib/supabase";
 
-async function logAanroep(entry: {
+const ENDPOINT = "/api/facturen";
+
+function getIp(request: NextRequest): string | null {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
+  );
+}
+
+async function logAccess(
+  request: NextRequest,
+  status: number,
+  error: string
+) {
+  await supabase.from("access_logs").insert({
+    endpoint: ENDPOINT,
+    response_status: status,
+    error,
+    ip: getIp(request),
+  });
+}
+
+async function logFactuur(entry: {
   project_id: string;
   project_naam: string;
   factuurnummer: string | null;
@@ -19,11 +41,12 @@ async function logAanroep(entry: {
 export async function POST(request: NextRequest) {
   const start = Date.now();
 
-  // Authenticatie
+  // --- Authenticatie ---
   const authHeader = request.headers.get("authorization") ?? "";
   const apiKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (!apiKey) {
+    await logAccess(request, 401, "Authorization header ontbreekt");
     return NextResponse.json(
       { error: "Authorization header ontbreekt" },
       { status: 401 }
@@ -39,13 +62,32 @@ export async function POST(request: NextRequest) {
   }
 
   if (!project) {
+    await logAccess(request, 403, "Onbekende API key");
     return NextResponse.json({ error: "Onbekende API key" }, { status: 403 });
   }
 
+  // --- Rate limiting ---
+  const { allowed, remaining, resetInMs } = checkRateLimit(project.id);
+  if (!allowed) {
+    await logAccess(request, 429, `Rate limit bereikt voor project ${project.naam}`);
+    return NextResponse.json(
+      { error: "Te veel aanvragen — probeer het over een minuut opnieuw" },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil(resetInMs / 1000)),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  }
+
+  // --- Request validatie ---
   let body: VerkoopfactuurPayload;
   try {
     body = await request.json();
   } catch {
+    await logAccess(request, 400, "Ongeldige JSON");
     return NextResponse.json({ error: "Ongeldige JSON" }, { status: 400 });
   }
 
@@ -55,19 +97,17 @@ export async function POST(request: NextRequest) {
     !body.factuurbedrag ||
     !body.boekingsregels?.length
   ) {
-    return NextResponse.json(
-      {
-        error:
-          "Verplichte velden ontbreken: klant.id, factuurnummer, factuurbedrag, boekingsregels",
-      },
-      { status: 400 }
-    );
+    const error =
+      "Verplichte velden ontbreken: klant.id, factuurnummer, factuurbedrag, boekingsregels";
+    await logAccess(request, 400, error);
+    return NextResponse.json({ error }, { status: 400 });
   }
 
+  // --- Factuur aanmaken ---
   try {
     const factuur = await maakVerkoopfactuur(project.snelstartClientKey, body);
 
-    await logAanroep({
+    await logFactuur({
       project_id: project.id,
       project_naam: project.naam,
       factuurnummer: body.factuurnummer,
@@ -78,11 +118,14 @@ export async function POST(request: NextRequest) {
       duration_ms: Date.now() - start,
     });
 
-    return NextResponse.json(factuur, { status: 201 });
+    return NextResponse.json(factuur, {
+      status: 201,
+      headers: { "X-RateLimit-Remaining": String(remaining) },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Onbekende fout";
 
-    await logAanroep({
+    await logFactuur({
       project_id: project.id,
       project_naam: project.naam,
       factuurnummer: body.factuurnummer ?? null,
